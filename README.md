@@ -43,8 +43,9 @@ After installation, you'll see a token counter in the corner of your screen:
 4. The indicator now shows `current/YOUR_LIMIT`
 
 ## 📝 License
-do whatever you want with it ƪ(˘⌣˘)ʃ
+do whatever you want with it ƪ ( ˘ ⌣ ˘ ) ʃ
 
 ### Setting a Custom Max Context
 
 By default, the extension uses your model's maximum context (e.g., 202752 for large models). But you might want to set a personal limit:
+
