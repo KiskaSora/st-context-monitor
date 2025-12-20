@@ -1,8 +1,8 @@
-import { extension_settings, getContext } from "../../extensions.js";
-import { saveSettingsDebounced, eventSource, event_types } from "../../../script.js";
+import { extension_settings, getContext } from "../../../extensions.js";
+import { saveSettingsDebounced, eventSource, event_types } from "../../../../script.js";
 
-const extensionName = "context-monitor";
-const extensionFolderPath = `scripts/extensions/${extensionName}`;
+const extensionName = "st-context-monitor";
+const extensionFolderPath = `scripts/extensions/third-party/${extensionName}`;
 
 let contextIndicator = null;
 let lastPromptTokens = 0;
