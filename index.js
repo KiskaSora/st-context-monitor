@@ -6,6 +6,8 @@ const extensionFolderPath = `scripts/extensions/third-party/${extensionName}`;
 
 let contextIndicator = null;
 let lastPromptTokens = 0;
+let messageStats = { hidden: 0, total: 0 };
+let chatObserver = null;
 
 const defaultSettings = {
     enabled: true,
@@ -14,7 +16,9 @@ const defaultSettings = {
     scale: 1.0,
     bgColor: "#000000",
     useCustomMax: false,
-    customMax: 32000
+    customMax: 32000,
+    showHiddenCounter: true,
+    hiddenCounterPosition: "below"
 };
 
 async function loadSettings() {
@@ -37,6 +41,8 @@ async function loadSettings() {
     $("#context_monitor_bg_color").val(settings.bgColor);
     $("#context_monitor_use_custom_max").prop("checked", settings.useCustomMax);
     $("#context_monitor_custom_max").val(settings.customMax);
+    $("#context_monitor_show_hidden").prop("checked", settings.showHiddenCounter);
+    $("#context_monitor_hidden_position").val(settings.hiddenCounterPosition);
     
     $("#opacity_value").text(Math.round(settings.opacity * 100) + "%");
     $("#scale_value").text(settings.scale.toFixed(1) + "x");
@@ -51,6 +57,69 @@ function toggleCustomMaxField() {
     } else {
         $("#custom_max_container").hide();
     }
+}
+
+function countMessages() {
+    try {
+        const context = getContext();
+        const chat = context?.chat;
+        
+        if (!chat || chat.length === 0) {
+            return { hidden: 0, total: 0 };
+        }
+        
+        const totalMessages = chat.length;
+        const hiddenMessages = chat.filter(msg => msg.is_system === true).length;
+        
+        return { 
+            hidden: hiddenMessages,
+            total: totalMessages
+        };
+    } catch (error) {
+        console.error(`[${extensionName}] Error counting messages:`, error);
+        return { hidden: 0, total: 0 };
+    }
+}
+
+function startChatObserver() {
+    if (chatObserver) {
+        chatObserver.disconnect();
+    }
+    
+    const chatBlock = document.getElementById('chat');
+    if (!chatBlock) {
+        console.log(`[${extensionName}] Chat block not found, will retry...`);
+        return;
+    }
+    
+    chatObserver = new MutationObserver((mutations) => {
+        let shouldUpdate = false;
+        
+        for (const mutation of mutations) {
+            if (mutation.type === 'childList' || 
+                mutation.type === 'attributes' ||
+                mutation.target.classList?.contains('mes')) {
+                shouldUpdate = true;
+                break;
+            }
+        }
+        
+        if (shouldUpdate) {
+            const newStats = countMessages();
+            if (newStats.hidden !== messageStats.hidden || newStats.total !== messageStats.total) {
+                updateContextDisplay();
+            }
+        }
+    });
+    
+    chatObserver.observe(chatBlock, {
+        childList: true,
+        subtree: true,
+        attributes: true,
+        attributeFilter: ['class', 'hidden', 'style']
+    });
+    
+    console.log(`[${extensionName}] Chat observer started`);
 }
 
 function createIndicator() {
@@ -79,7 +148,8 @@ function applyStyles() {
         'background-color': settings.bgColor,
         'transform-origin': settings.position.includes('bottom') 
             ? (settings.position.includes('right') ? 'bottom right' : 'bottom left')
-            : (settings.position.includes('right') ? 'top right' : 'top left')
+            : (settings.position.includes('right') ? 'top right' : 'top left'),
+        'white-space': settings.hiddenCounterPosition === 'below' ? 'pre-line' : 'nowrap'
     });
 }
 
@@ -99,7 +169,23 @@ function updateContextDisplay() {
             maxTokens = context.maxContext || 0;
         }
         
-        contextIndicator.text(`${usedTokens}/${maxTokens}`);
+        messageStats = countMessages();
+        
+        let displayHtml = `${usedTokens}/${maxTokens}`;
+        
+        if (settings.showHiddenCounter && messageStats.total > 0) {
+            const ghostIcon = '<i class="fa-solid fa-ghost"></i>';
+            
+            if (settings.hiddenCounterPosition === 'inline') {
+                displayHtml += ` | ${ghostIcon} ${messageStats.hidden}/${messageStats.total}`;
+            } else if (settings.hiddenCounterPosition === 'below') {
+                displayHtml += `<br>${ghostIcon} ${messageStats.hidden}/${messageStats.total}`;
+            } else {
+                displayHtml += ` (${ghostIcon} ${messageStats.hidden}/${messageStats.total})`;
+            }
+        }
+        
+        contextIndicator.html(displayHtml);
         
         const percentage = maxTokens > 0 ? (usedTokens / maxTokens) * 100 : 0;
         contextIndicator.removeClass('text-low text-medium text-high text-critical');
@@ -118,7 +204,7 @@ function updateSetting(key, value) {
     if (key === "useCustomMax") {
         toggleCustomMaxField();
         updateContextDisplay();
-    } else if (key === "customMax") {
+    } else if (key === "customMax" || key === "showHiddenCounter" || key === "hiddenCounterPosition") {
         updateContextDisplay();
     } else {
         applyStyles();
@@ -149,7 +235,6 @@ function interceptPromptData() {
                             totalTokens = context.getTokenCount(allText);
                             
                             lastPromptTokens = totalTokens;
-                            console.log(`[${extensionName}] Prompt tokens from request: ${totalTokens}`);
                             updateContextDisplay();
                         }
                     }
@@ -177,7 +262,6 @@ function tryReadFromChatCompletion() {
             const tokens = parseInt(match[1]);
             if (tokens > 0 && tokens !== lastPromptTokens) {
                 lastPromptTokens = tokens;
-                console.log(`[${extensionName}] Tokens from Chat Completion UI: ${tokens}`);
                 updateContextDisplay();
                 return true;
             }
@@ -195,7 +279,6 @@ jQuery(async () => {
         $("#extensions_settings2").append(settingsHtml);
         
         await loadSettings();
-        
         interceptPromptData();
         
         $("#context_monitor_enabled").on("input", function() {
@@ -205,10 +288,14 @@ jQuery(async () => {
             
             if (val) {
                 createIndicator();
+                startChatObserver();
             } else {
                 if (contextIndicator) {
                     contextIndicator.remove();
                     contextIndicator = null;
+                }
+                if (chatObserver) {
+                    chatObserver.disconnect();
                 }
             }
         });
@@ -243,23 +330,40 @@ jQuery(async () => {
             updateSetting("customMax", val);
         });
 
+        $("#context_monitor_show_hidden").on("input", function() {
+            const val = $(this).prop("checked");
+            updateSetting("showHiddenCounter", val);
+        });
+
+        $("#context_monitor_hidden_position").on("change", function() {
+            updateSetting("hiddenCounterPosition", $(this).val());
+        });
+
         if (extension_settings[extensionName].enabled) {
             createIndicator();
         }
         
         eventSource.on(event_types.MESSAGE_RECEIVED, updateContextDisplay);
         eventSource.on(event_types.MESSAGE_SENT, updateContextDisplay);
-        eventSource.on(event_types.CHAT_CHANGED, updateContextDisplay);
+        eventSource.on(event_types.CHAT_CHANGED, () => {
+            updateContextDisplay();
+            startChatObserver();
+        });
+        eventSource.on(event_types.MESSAGE_DELETED, updateContextDisplay);
+        eventSource.on(event_types.MESSAGE_EDITED, updateContextDisplay);
         eventSource.on(event_types.GENERATION_ENDED, () => {
             setTimeout(tryReadFromChatCompletion, 500);
         });
         
-        setInterval(tryReadFromChatCompletion, 3000);
+        setTimeout(() => {
+            startChatObserver();
+        }, 2000);
         
+        setInterval(tryReadFromChatCompletion, 3000);
         setTimeout(updateContextDisplay, 1000);
         
-        console.log(`[${extensionName}] ✅ Loaded successfully`);
+        console.log(`[${extensionName}] Loaded successfully`);
     } catch (error) {
-        console.error(`[${extensionName}] ❌ Failed to load:`, error);
+        console.error(`[${extensionName}] Failed to load:`, error);
     }
 });

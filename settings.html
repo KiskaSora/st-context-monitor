@@ -51,7 +51,21 @@
                 <input id="context_monitor_custom_max" type="number" class="text_pole" min="1000" max="1000000" step="1000" placeholder="e.g. 32000" style="width: 120px;" />
             </div>
 
-            <p><small>Shows the actual size of the Chat Completion prompt (with system and other stuff).</small></p>
+            <hr>
+
+            <div class="flex-container">
+                <input id="context_monitor_show_hidden" type="checkbox" />
+                <label for="context_monitor_show_hidden"><i class="fa-solid fa-ghost"></i> Show hidden counter</label>
+            </div>
+
+            <div class="flex-container">
+                <label for="context_monitor_hidden_position">Display mode:</label>
+                <select id="context_monitor_hidden_position" class="text_pole">
+                    <option value="below">Below</option>
+                    <option value="inline">Inline</option>
+                    <option value="separate">Separate</option>
+                </select>
+            </div>
         </div>
     </div>
 </div>

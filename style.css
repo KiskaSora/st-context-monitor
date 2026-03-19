@@ -44,3 +44,11 @@
 .context-monitor-settings input[type="range"] {
     flex-grow: 1;
 }
+.cm-hidden-line {
+    display: inline-block;
+    margin-top: 2px;
+    font-size: 12px;
+    font-weight: 500;
+    opacity: 0.8;
+}
+
